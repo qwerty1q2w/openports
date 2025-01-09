@@ -20,24 +20,27 @@ class PortScanner:
                for proto in self.nm[host].all_protocols():
                    ports = self.nm[host][proto].keys()
                    for port in ports:
-                       # Check if port is not already in database
-                       existing = ScanResult.query.filter_by(
-                           task_id=task.id,
-                           ip_address=host,
-                           port=port,
-                           protocol=proto
-                       ).first()
-
-                       if not existing:
-                           result = ScanResult(
+                       port_state = self.nm[host][proto][port]['state']
+                       
+                       # Проверяем только открытые порты
+                       if port_state == 'open':
+                           existing = ScanResult.query.filter_by(
                                task_id=task.id,
                                ip_address=host,
                                port=port,
-                               protocol=proto,
-                               status=self.nm[host][proto][port]['state']
-                           )
-                           self.db.session.add(result)
-                           new_findings.append(result)
+                               protocol=proto
+                           ).first()
+
+                           if not existing:
+                               result = ScanResult(
+                                   task_id=task.id,
+                                   ip_address=host,
+                                   port=port,
+                                   protocol=proto,
+                                   status=port_state
+                               )
+                               self.db.session.add(result)
+                               new_findings.append(result)
 
            self.db.session.commit()
            
@@ -48,33 +51,35 @@ class PortScanner:
            print(f"Scan error: {str(e)}")
 
    def send_notifications(self, task, findings):
-       message = f"New open ports found for task '{task.name}':\n"
+       message = f"Найдены новые открытые порты для задачи '{task.name}':\n"
        for finding in findings:
-           message += f"IP: {finding.ip_address}, Port: {finding.port}, Protocol: {finding.protocol}\n"
+           message += f"IP: {finding.ip_address}, Порт: {finding.port}, Протокол: {finding.protocol}\n"
 
        notifications = task.notifications
 
        # Discord notifications
-       if 'discord' in notifications:
+       if 'discord' in notifications and notifications['discord']:
            for webhook in notifications['discord']:
                try:
                    requests.post(webhook, json={'content': message})
                except Exception as e:
-                   print(f"Discord notification error: {str(e)}")
+                   print(f"Ошибка отправки в Discord: {str(e)}")
 
        # Slack notifications
-       if 'slack' in notifications:
+       if 'slack' in notifications and notifications['slack']:
            for webhook in notifications['slack']:
                try:
                    requests.post(webhook, json={'text': message})
                except Exception as e:
-                   print(f"Slack notification error: {str(e)}")
+                   print(f"Ошибка отправки в Slack: {str(e)}")
 
        # Telegram notifications
-       if 'telegram' in notifications:
+       if 'telegram' in notifications and notifications['telegram']:
            for chat_id in notifications['telegram']:
                try:
                    url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
                    requests.post(url, json={'chat_id': chat_id, 'text': message})
                except Exception as e:
-                   print(f"Telegram notification error: {str(e)}")
+                   print(f"Ошибка отправки в Telegram: {str(e)}")
+                   
+       print(f"Отправлено уведомление о {len(findings)} новых открытых портах")
