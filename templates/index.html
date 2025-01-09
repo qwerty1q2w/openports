@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Port Scanner Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-8">Port Scanner Dashboard</h1>
+        
+        <!-- Форма новой задачи -->
+        <div class="bg-white p-6 rounded-lg shadow-lg mb-8">
+            <h2 class="text-xl font-semibold mb-4">Создать новую задачу сканирования</h2>
+            <form id="taskForm" class="space-y-4">
+                <div>
+                    <label class="block mb-2">Название задачи</label>
+                    <input type="text" name="name" class="w-full p-2 border rounded" required>
+                </div>
+                <div>
+                    <label class="block mb-2">Диапазон IP-адресов</label>
+                    <input type="text" name="ip_range" class="w-full p-2 border rounded" required>
+                </div>
+                <div>
+                    <label class="block mb-2">Интервал сканирования (минуты)</label>
+                    <input type="number" name="scan_interval" class="w-full p-2 border rounded" required>
+                </div>
+                <div>
+                    <label class="block mb-2">Тип сканирования</label>
+                    <select name="scan_type" class="w-full p-2 border rounded">
+                        <option value="TCP">TCP</option>
+                        <option value="UDP">UDP</option>
+                        <option value="BOTH">TCP и UDP</option>
+                    </select>
+                </div>
+                <div class="space-y-2">
+                    <h3 class="font-medium">Оповещения</h3>
+                    <div>
+                        <label class="block mb-2">Discord вебхуки (по одному на строку)</label>
+                        <textarea name="discord_webhooks" class="w-full p-2 border rounded"></textarea>
+                    </div>
+                    <div>
+                        <label class="block mb-2">Slack вебхуки (по одному на строку)</label>
+                        <textarea name="slack_webhooks" class="w-full p-2 border rounded"></textarea>
+                    </div>
+                    <div>
+                        <label class="block mb-2">Telegram chat IDs (по одному на строку)</label>
+                        <textarea name="telegram_chat_ids" class="w-full p-2 border rounded"></textarea>
+                    </div>
+                </div>
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Создать задачу</button>
+            </form>
+        </div>
+
+        <!-- Список задач -->
+        <div class="bg-white p-6 rounded-lg shadow-lg mb-8">
+            <h2 class="text-xl font-semibold mb-4">Активные задачи</h2>
+            <div id="tasksList" class="space-y-4"></div>
+        </div>
+
+        <!-- Результаты сканирования -->
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-xl font-semibold mb-4">Результаты сканирования</h2>
+            <div class="mb-4 space-y-2">
+                <div>
+                    <label class="block mb-2">Задача</label>
+                    <select id="resultTaskFilter" class="w-full p-2 border rounded"></select>
+                </div>
+                <div class="flex space-x-4">
+                    <div>
+                        <label class="block mb-2">Начальная дата</label>
+                        <input type="date" id="startDate" class="p-2 border rounded">
+                    </div>
+                    <div>
+                        <label class="block mb-2">Конечная дата</label>
+                        <input type="date" id="endDate" class="p-2 border rounded">
+                    </div>
+                </div>
+                <button onclick="loadResults()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                    Загрузить результаты
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full table-auto">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="px-4 py-2">IP-адрес</th>
+                            <th class="px-4 py-2">Порт</th>
+                            <th class="px-4 py-2">Протокол</th>
+                            <th class="px-4 py-2">Статус</th>
+                            <th class="px-4 py-2">Время</th>
+                            <th class="px-4 py-2">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Загрузка задач
+        async function loadTasks() {
+            const response = await fetch('/api/tasks');
+            const tasks = await response.json();
+            
+            const tasksList = document.getElementById('tasksList');
+            const resultTaskFilter = document.getElementById('resultTaskFilter');
+            
+            tasksList.innerHTML = '';
+            resultTaskFilter.innerHTML = '<option value="">Все задачи</option>';
+            
+            tasks.forEach(task => {
+                tasksList.innerHTML += `
+                    <div class="border p-4 rounded">
+                        <h3 class="font-medium">${task.name}</h3>
+                        <p>Диапазон IP: ${task.ip_range}</p>
+                        <p>Интервал: ${task.scan_interval} минут</p>
+                        <p>Тип: ${task.scan_type}</p>
+                        <p>Статус: ${task.active ? 'Активна' : 'Неактивна'}</p>
+                    </div>
+                `;
+                
+                resultTaskFilter.innerHTML += `
+                    <option value="${task.id}">${task.name}</option>
+                `;
+            });
+        }
+
+        // Загрузка результатов
+        async function loadResults() {
+            const taskId = document.getElementById('resultTaskFilter').value;
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            let url = '/api/results?';
+            if (taskId) url += `task_id=${taskId}&`;
+            if (startDate) url += `start_date=${startDate}&`;
+            if (endDate) url += `end_date=${endDate}&`;
+            
+            const response = await fetch(url);
+            const results = await response.json();
+            
+            const resultsTable = document.getElementById('resultsTable');
+            resultsTable.innerHTML = '';
+            
+            results.forEach(result => {
+                resultsTable.innerHTML += `
+                    <tr>
+                        <td class="border px-4 py-2">${result.ip_address}</td>
+                        <td class="border px-4 py-2">${result.port}</td>
+                        <td class="border px-4 py-2">${result.protocol}</td>
+                        <td class="border px-4 py-2">${result.status}</td>
+                        <td class="border px-4 py-2">${moment(result.timestamp).format('YYYY-MM-DD HH:mm:ss')}</td>
+                        <td class="border px-4 py-2">
+                            <button onclick="deleteResult(${result.id})" 
+                                    class="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600">
+                                Удалить
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Создание новой задачи
+        document.getElementById('taskForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            
+            const notifications = {
+                discord: formData.get('discord_webhooks').split('\n').filter(x => x),
+                slack: formData.get('slack_webhooks').split('\n').filter(x => x),
+                telegram: formData.get('telegram_chat_ids').split('\n').filter(x => x)
+            };
+            
+            const response = await fetch('/api/tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: formData.get('name'),
+                    ip_range: formData.get('ip_range'),
+                    scan_interval: parseInt(formData.get('scan_interval')),
+                    scan_type: formData.get('scan_type'),
+                    notifications
+                })
+            });
+            
+            if (response.ok) {
+                e.target.reset();
+                loadTasks();
+            }
+        };
+
+        // Удаление результата
+        async function deleteResult(resultId) {
+            console.log('Удаляем запись:', resultId);
+            const response = await fetch(`/api/results/${resultId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                console.log('Запись успешно удалена');
+                loadResults();
+            } else {
+                console.error('Ошибка при удалении записи');
+            }
+        }
+
+        // Начальная загрузка
+        loadTasks();
+    </script>
+</body>
+</html>
